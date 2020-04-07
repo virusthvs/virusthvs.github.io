@@ -1,7 +1,9 @@
 ---
 title: "COVID 19 (INDIA & TAMILNADU) TRACKER (WIP)"
+runtime: Shiny
 output:
   flexdashboard::flex_dashboard:
+    theme: flatly
     social: menu
     orientation: rows
     vertical_layout: fill
@@ -23,17 +25,152 @@ library(purrr)
 library(plotly)
 
 tindiadata <- read_json("https://raw.githubusercontent.com/covid19india/api/master/data.json")
+indMap<-readRDS("data/indl1.rds")
+
 
 statedata <- tindiadata$statewise %>% map_if(is_list, as_tibble) %>% bind_rows %>%    mutate(active=as.integer(active)) %>%
 mutate(recovered=as.integer(recovered)) %>%
 mutate(deaths=as.integer(deaths)) %>%
-mutate(confirmed=as.integer(confirmed))
+mutate(confirmed=as.integer(confirmed)) %>%
+mutate(deltaconfirmed = as.integer(deltaconfirmed)) %>%
+mutate(state = if_else(state == "Delhi", "NCT of Delhi", state))
+
 
 tnstatedata <- filter(statedata, statecode=="TN")
 indata <- filter(statedata, statecode=="TT")
 
 
+confirmedColor <- "steelblue"
+activeColor <- 'deeppink'
+recoveredColor <- '#2C9F2C'
+deathColor <- '#D62728'
+
 ```
+
+India
+=====================================================================================
+Row
+---------------------------------------------------------------------------------
+
+### CONFIRMED {.value-box}
+
+```{r}
+  valueBox(
+    value = paste(format(indata$confirmed, big.mark = ","), "", sep = " "),
+    icon = "fas fa-user-md",
+    color = confirmedColor
+  )
+
+```
+
+### ACTIVE {.value-box}
+
+```{r}
+  valueBox(paste(format(indata$active, big.mark = ","), "", " (",
+           round(100 * indata$active/indata$confirmed, 1),"%)", sep = " "),
+           icon = "fas fa-ambulance",
+           color = activeColor)
+
+```
+
+### RECOVERED {.value-box}
+
+```{r}
+
+valueBox(paste(format(indata$recovered, big.mark = ","), "",  " (",
+         round(100 * indata$recovered/indata$confirmed, 1), "%)", sep = " "),
+         icon = "fas fa-heartbeat",
+         color = recoveredColor)
+
+```
+
+### DEATH {.value-box}
+```{r}
+
+valueBox(paste(format(indata$deaths, big.mark = ","), "", "(",
+         round(100 * indata$deaths/indata$confirmed,1),"%)", sep = " "),
+         icon = "fas fa-heart-broken",
+         color = deathColor)
+
+```
+
+
+Row
+-----------------------------------------------------------------------
+
+### CASE DISTRIBUTION BY STATES (HOVER OVER A STATE/UT FOR MORE DETAILS)
+```{r}
+statecovid<-merge(indMap, statedata, by.x=c("NAME_1"), by.y=c("state"))
+cp <- colorRampPalette(colors = c("White","Blue"), space="Lab")(30)
+cor_cases <- colorNumeric(palette = cp,
+                          domain = statecovid$cases, na.color = 'lightgrey')
+statecovid %>% 
+   leaflet() %>% setView(lng = 77.8047, lat = 10.7000, zoom = 4.5) %>%
+     addProviderTiles('CartoDB.PositronNoLabels') %>% 
+      addPolygons(color = "black", weight=1, 
+                  fillColor = ~cor_cases(statecovid$active), fillOpacity=0.5,
+                  highlight = highlightOptions(fillColor = "Cyan",
+                                               fillOpacity = 0.8,
+                                               bringToFront = TRUE),
+                  group = "COVID 19 +VE Cases",
+                  label=~paste0(NAME_1, " : ", active, " "), 
+                  labelOptions = 
+                    labelOptions(style = list("font-weight" = "normal",
+                                              padding = "3px 8px"), 
+                                              textsize = "15px",
+                                 direction = "auto")) %>%
+                  addLegend(position = "bottomleft", pal = cor_cases,
+                            na.label = "No Data", 
+                            values = statecovid$active,
+                            title="INDIA COVID19 ACTIVE CASES", 
+                            opacity = 0.8)
+
+```
+
+### BAR PLOT (CASE DISTRIBUTION BY STATES, TOP 25)
+
+
+```{r}
+statedata[-1,] %>% arrange(desc(confirmed)) %>% 
+  mutate(active=as.integer(active)) %>%
+  mutate(recovered=as.integer(recovered)) %>%
+  mutate(deaths=as.integer(deaths)) %>%
+  head(25) %>%
+plotly::plot_ly(y = ~ reorder(state, active), 
+          x = ~ active, 
+          orientation = 'h',
+          text =  ~ active,
+          textposition = 'auto',
+          type = "bar", 
+          name = "Active",
+          marker = list(color = activeColor)) %>%
+  plotly::add_trace(x = ~ recovered,
+            text =  ~ recovered,
+            textposition = 'auto',
+            name = "Recovered",
+            marker = list(color = recoveredColor)) %>%
+  plotly::add_trace(x = ~ deaths, 
+            text =  ~ deaths,
+            textposition = 'auto',
+            name = "Death",
+            marker = list(color = deathColor)) %>%
+  plotly::layout(title = "",
+         barmode = 'stack',
+         yaxis = list(title = "States"),
+         xaxis = list(title = "Number of Cases"),
+         hovermode = "compare",
+         legend = list(x = 0.65, y = 0.9),
+         margin =  list(
+           l = 20,
+           r = 10,
+           b = 10,
+           t = 30,
+           pad = 2
+         ))
+
+```
+
+
 
 TamilNadu
 =======================================================================================
@@ -46,7 +183,7 @@ Row
   valueBox(
     value = paste(format(tnstatedata$confirmed, big.mark = ","), "", sep = " "),
     icon = "fas fa-user-md",
-    color = "purple"
+    color = confirmedColor
   )
 
 ```
@@ -54,9 +191,10 @@ Row
 ### ACTIVE {.value-box}
 
 ```{r}
-  valueBox(paste(format(tnstatedata$active, big.mark = ","), "", sep = " "),
+  valueBox(paste(format(tnstatedata$active, big.mark = ","), "",  " (",
+           round(100 * tnstatedata$active/tnstatedata$confirmed, 1), "%)", sep = " "),
            icon = "fas fa-ambulance",
-           color = "#1f77b4")
+           color = activeColor)
 
 ```
 
@@ -64,18 +202,19 @@ Row
 
 ```{r}
 
-valueBox(paste(format(tnstatedata$recovered, big.mark = ","), "", sep = " "),
+valueBox(paste(format(tnstatedata$recovered, big.mark = ","), "", "(",
+         round(100 * tnstatedata$recovered/tnstatedata$confirmed,1), "%)",  sep = " "),
          icon = "fas fa-heartbeat",
-         color = "forestgreen")
+         color = recoveredColor)
 
 ```
 
 ### DEATH {.value-box}
 ```{r}
-
-valueBox(paste(format(tnstatedata$deaths, big.mark = ","), "", sep = " "),
+valueBox(paste(format(tnstatedata$deaths, big.mark = ","), "", "(",
+         round(100 * tnstatedata$deaths/tnstatedata$confirmed,1), "%)", sep = " "), 
          icon = "fas fa-heart-broken",
-         color = "red")
+         color = deathColor)
 
 ```
 
@@ -86,7 +225,7 @@ Row
 
 
 
-### CASE DISTRIBUTION BY DISTRICTS
+### CASE DISTRIBUTION BY DISTRICTS (HOVER OVER A DISTRICT FOR MORE DETAILS)
 
 ```{r}
 india <- readRDS('data/indl2.rds')
@@ -94,7 +233,7 @@ tn <- india[india$NAME_1=='Tamil Nadu',]
 tndata <- read_csv("data/ncovid3.dat")
 
 tncovid <- merge(tn , tndata , by.x = c("NAME_2"), by.y = c("District"))
-cp <- colorRampPalette(colors = c("White","Red"), space="Lab")(30)
+cp <- colorRampPalette(colors = c("White","Blue"), space="Lab")(30)
 cor_cases <- colorNumeric(palette = cp, domain = tncovid$Cases, na.color = 'lightgrey')                       
 tncovid %>% 
   leaflet() %>% setView(lng = 77.8047, lat = 10.7000, zoom = 6.5) %>%
@@ -115,112 +254,30 @@ tncovid %>%
 ```
 
 
-### BAR PLOT (CASE DISTRIBUTION BY DISTRICTS)
+### BAR PLOT (CASE DISTRIBUTION BY DISTRICTS, TOP 15)
 
 ```{r}
 tndata1 <- tndata %>%  arrange(desc(Cases)) %>% head(15)
-ggplot(data=tndata1, aes(x=reorder(District,Cases), y=Cases, fill = District)) +
-geom_bar(stat="identity")+
-scale_colour_gradient2()+
-coord_flip()
+ggplot(data=tndata1, aes(x=reorder(District,Cases), y=Cases, fill = District)) + xlab("Districts") + 
+geom_bar(stat="identity") + geom_text(aes(label=Cases), hjust= 0.1, position = position_dodge(width = 1))+
+scale_colour_gradient2() +
+coord_flip() + theme_classic() + theme(legend.position="bottom")
 
 ```
 
 
-India
-=====================================================================================
-Row
--------------------------------------------------------------------------------------
-
-### CONFIRMED {.value-box}
-
-```{r}
-  valueBox(
-    value = paste(format(indata$confirmed, big.mark = ","), "", sep = " "),
-    icon = "fas fa-user-md",
-    color = "purple"
-  )
-
-```
-
-### ACTIVE {.value-box}
-
-```{r}
-  valueBox(paste(format(indata$active, big.mark = ","), "", sep = " "),
-           icon = "fas fa-ambulance",
-           color = "#1f77b4")
-
-```
-
-### RECOVERED {.value-box}
-
-```{r}
-
-valueBox(paste(format(indata$recovered, big.mark = ","), "", sep = " "),
-         icon = "fas fa-heartbeat",
-         color = "forestgreen")
-
-```
-
-### DEATH {.value-box}
-```{r}
-
-valueBox(paste(format(indata$deaths, big.mark = ","), "", sep = " "),
-         icon = "fas fa-heart-broken",
-         color = "red")
-
-```
 
 
-Row
------------------------------------------------------------------------
-
-### CASE DISTRIBUTION BY STATES
-```{r}
-
-
-```
-
-### BAR PLOT (CASE DISTRIBUTION BY STATES)
-
-
-```{r}
-statedata[-1,] %>% arrange(desc(confirmed)) %>% 
-  mutate(active=as.integer(active)) %>%
-  mutate(recovered=as.integer(recovered)) %>%
-  mutate(deaths=as.integer(deaths)) %>%
-  head(25) %>%
-plotly::plot_ly(y = ~ reorder(state, active), 
-          x = ~ active, 
-          orientation = 'h',
-          text =  ~ active,
-          textposition = 'auto',
-          type = "bar", 
-          name = "Active",
-          marker = list(color = "#1f77b4")) %>%
-  plotly::add_trace(x = ~ recovered,
-            text =  ~ recovered,
-            textposition = 'auto',
-            name = "Recovered",
-            marker = list(color = "forestgreen")) %>%
-  plotly::add_trace(x = ~ deaths, 
-            text =  ~ deaths,
-            textposition = 'auto',
-            name = "Death",
-            marker = list(color = "red")) %>%
-  plotly::layout(title = "",
-         barmode = 'stack',
-         yaxis = list(title = "States"),
-         xaxis = list(title = "Number of Cases"),
-         hovermode = "compare",
-         legend = list(x = 0.65, y = 0.9),
-         margin =  list(
-           l = 20,
-           r = 10,
-           b = 10,
-           t = 30,
-           pad = 2
-         ))
-
-```
-
+Credits
+====================================================================================
+<h1> Data Sources</h1>
+<ul>
+<li><a href="http://api.covid19india.org/">COVID 19 India API</a>
+<li><a href="https://stopcorona.tn.gov.in/">TN Corona Website</a>
+<li><a href="https://gadm.org/">GADM Map Data</li>
+</ul>
+<h1>Software Packages (WIP, TBD)</h2>
+<ul>
+<li><a href="https://rstudio.com/">R studio</a>
+<li>Various R packages
+</ul>
